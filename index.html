@@ -39,6 +39,7 @@
   .legend { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 11px; font-size: 0.84rem; color: #333; align-items: center; }
   .legend-item { display: flex; align-items: center; gap: 4px; }
   .legend-swatch { width: 14px; height: 14px; border-radius: 3px; }
+  /* Garmin */
   .rg { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 15px; }
   .rc { border-radius: 10px; padding: 17px; border: 1px solid #eee; position: relative; overflow: hidden; background: white; }
   .rc::before { content:""; position:absolute; top:0; left:0; right:0; height:3px; }
@@ -56,6 +57,7 @@
 </style>
 </head>
 <body>
+
 <div class="header">
   <div>
     <h1>HYROX Dashboard</h1>
@@ -63,11 +65,14 @@
   </div>
   <button class="btn" onclick="render()">&#8635; Refresh</button>
 </div>
+
 <div id="cards" class="cards"></div>
+
 <div class="section">
   <h2>Finish Time by Race</h2>
   <div class="chart-wrap"><canvas id="timeChart"></canvas></div>
 </div>
+
 <div class="section">
   <h2>Split Performance vs Division Median</h2>
   <p style="font-size:0.75rem;color:#bbb;margin-bottom:12px">Your time per station. Colour = how much faster/slower than your division median.</p>
@@ -82,20 +87,25 @@
     <span class="legend-item"><span class="legend-swatch c-slow2"></span>&gt;:30 slower</span>
   </div>
 </div>
+
 <div class="section">
   <h2>Gap to Top 10% &mdash; by Station</h2>
   <p style="font-size:0.75rem;color:#bbb;margin-bottom:12px">Negative = faster than top 10%. Positive = time to claw back.</p>
   <div class="chart-wrap"><canvas id="gapChart"></canvas></div>
 </div>
+
 <div class="section">
   <h2>Race Day Readiness &mdash; Garmin</h2>
   <p style="font-size:0.75rem;color:#bbb;margin-bottom:16px">Training readiness, sleep, HRV, and body battery from race morning.</p>
   <div class="rg" id="readinessGrid"></div>
   <div class="rc-chart"><canvas id="readinessChart"></canvas></div>
-  <p class="note">Training Readiness = Garmin morning score (after-wakeup). (~) calories = partial multisport estimate. Singapore not recorded on watch.</p>
+  <p class="note">Training Readiness = Garmin after-wakeup score. Sleep = night before race (from Garmin API). Seoul = partial multisport capture; Singapore watch not recording on race day.</p>
 </div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
 <script>
+
+// ── Static race data (fetched via MCP, embedded at build time) ───────────────
 var RACES = [
   {
     label:"Seoul", date:"Jan 12", partner:"Ben Stiekema", division:"Men's Doubles",
@@ -190,82 +200,189 @@ var RACES = [
     ]
   }
 ];
+
 var GARMIN = [
-  { label:"Seoul",         readiness:{score:70,level:"MODERATE"}, sleep:{score:77,quality:"FAIR",duration:"7h 02m",deep:"1h 52m",rem:"44m",stress:15,stressQ:"GOOD",spo2:95}, hrv:{avg:46,status:"BALANCED"}, battery:{charged:59,level:"MODERATE"}, calories:"~660" },
-  { label:"Melbourne",     readiness:{score:55,level:"MODERATE"}, sleep:{score:78,quality:"FAIR",duration:"6h 29m",deep:"1h 38m",rem:"57m",stress:16,stressQ:"FAIR",spo2:97}, hrv:{avg:52,status:"BALANCED"}, battery:{charged:77,level:"MODERATE"}, calories:"~994" },
-  { label:"Singapore",     readiness:{score:1, level:"POOR"},     sleep:{score:59,quality:"POOR",duration:"5h 10m",deep:"1h 33m",rem:"18m",stress:19,stressQ:"FAIR",spo2:95}, hrv:{avg:52,status:"UNBALANCED"}, battery:{charged:59,level:"MODERATE"}, calories:"N/A" },
-  { label:"APAC Brisbane", readiness:{score:48,level:"LOW"},      sleep:{score:50,quality:"POOR",duration:"5h 07m",deep:"1h 48m",rem:"13m",stress:34,stressQ:"POOR",spo2:95}, hrv:{avg:48,status:"BALANCED"}, battery:{charged:71,level:"HIGH"}, calories:"1,010" }
+  { label:"Seoul",         readiness:{score:70,level:"MODERATE"}, sleep:{score:75,quality:"FAIR",duration:"6h 23m",deep:"1h 38m",rem:"56m",stress:19,stressQ:"GOOD"}, hrv:{avg:46,status:"BALANCED"}, battery:{charged:59,level:"MODERATE"}, calories:"~202 (partial)" },
+  { label:"Melbourne",     readiness:{score:55,level:"MODERATE"}, sleep:{score:71,quality:"FAIR",duration:"5h 18m",deep:"1h 14m",rem:"1h 11m",stress:11,stressQ:"GOOD"}, hrv:{avg:52,status:"BALANCED"}, battery:{charged:77,level:"MODERATE"}, calories:"497" },
+  { label:"Singapore",     readiness:{score:1, level:"POOR"},     sleep:{score:40,quality:"POOR",duration:"3h 15m",deep:"44m",   rem:"9m",    stress:20,stressQ:"GOOD"}, hrv:{avg:52,status:"UNBALANCED"}, battery:{charged:37,level:"LOW"},      calories:"N/A" },
+  { label:"APAC Brisbane", readiness:{score:48,level:"LOW"},      sleep:{score:79,quality:"FAIR",duration:"8h 38m",deep:"47m",   rem:"1h 10m",stress:22,stressQ:"GOOD"}, hrv:{avg:48,status:"BALANCED"}, battery:{charged:72,level:"HIGH"}, calories:"1,010" }
 ];
+
 var STATIONS = [
-  {key:"run1",label:"Run 1"},{key:"skierg",label:"Ski Erg"},{key:"run2",label:"Run 2"},
-  {key:"sledpush",label:"Sled Push"},{key:"run3",label:"Run 3"},{key:"sledpull",label:"Sled Pull"},
-  {key:"run4",label:"Run 4"},{key:"burpeebroadjump",label:"Burpee Broad Jump"},{key:"run5",label:"Run 5"},
-  {key:"rowerg",label:"Row Erg"},{key:"run6",label:"Run 6"},{key:"farmerscarry",label:"Farmers Carry"},
-  {key:"run7",label:"Run 7"},{key:"sandbaglunges",label:"Sandbag Lunges"},{key:"run8",label:"Run 8"},
-  {key:"wallballs",label:"Wall Balls"}
+  {key:"run1",           label:"Run 1"},
+  {key:"skierg",         label:"Ski Erg"},
+  {key:"run2",           label:"Run 2"},
+  {key:"sledpush",       label:"Sled Push"},
+  {key:"run3",           label:"Run 3"},
+  {key:"sledpull",       label:"Sled Pull"},
+  {key:"run4",           label:"Run 4"},
+  {key:"burpeebroadjump",label:"Burpee Broad Jump"},
+  {key:"run5",           label:"Run 5"},
+  {key:"rowerg",         label:"Row Erg"},
+  {key:"run6",           label:"Run 6"},
+  {key:"farmerscarry",   label:"Farmers Carry"},
+  {key:"run7",           label:"Run 7"},
+  {key:"sandbaglunges",  label:"Sandbag Lunges"},
+  {key:"run8",           label:"Run 8"},
+  {key:"wallballs",      label:"Wall Balls"}
 ];
+
 var COLORS = ["#2ecc71","#3498db","#8e44ad","#e67e22"];
-function toSec(t){if(!t||t==="N/A")return null;var p=t.split(":").map(Number);return p.length===3?p[0]*3600+p[1]*60+p[2]:p[0]*60+p[1];}
-function deltaSec(d){if(!d||d==="N/A")return null;return(d[0]==="-"?-1:1)*toSec(d.replace(/^[+-]/,""));}
-function fmtMin(sec){if(sec===null)return"?";return Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0");}
-function toMinF(t){var s=toSec(t);return s?+(s/60).toFixed(3):null;}
-function heatCls(d){if(d===null)return"c-zero";if(d<-90)return"c-fast3";if(d<-30)return"c-fast2";if(d<5)return"c-fast1";if(d<30)return"c-zero";if(d<60)return"c-slow1";return"c-slow2";}
-function findSplit(splits,key){return splits.find(function(s){return s.station.replace(/\s/g,"").toLowerCase()===key;});}
-function pill(txt,cls){return'<span class="pill '+cls+'">'+txt+'</span>';}
-function qPill(q){var m={GOOD:"pg",FAIR:"pf",POOR:"pp",BALANCED:"pg",UNBALANCED:"pb",MODERATE:"po",LOW:"pf",HIGH:"pg"};return pill(q,m[q]||"po");}
-function rPill(s){return pill(s>=66?"HIGH":s>=34?"MODERATE":s>=15?"LOW":"POOR",s>=66?"pg":s>=34?"po":s>=15?"pf":"pp");}
-var charts={};
-function destroyChart(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
-function render(){renderCards();renderTimeChart();renderHeatmap();renderGapChart();renderReadiness();}
-function renderCards(){
-  document.getElementById("cards").innerHTML=RACES.map(function(r,i){
-    var b=r.benchmarks,g10=deltaSec(b.gap_to_top_10),gCls=(g10!==null&&g10<0)?"green":"red";
-    return'<div class="card"><div class="card-label">'+r.label+' &middot; '+r.date+'</div>'
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function toSec(t) {
+  if (!t || t==="N/A") return null;
+  var p = t.split(":").map(Number);
+  return p.length===3 ? p[0]*3600+p[1]*60+p[2] : p[0]*60+p[1];
+}
+function deltaSec(d) {
+  if (!d||d==="N/A") return null;
+  return (d[0]==="-"?-1:1)*toSec(d.replace(/^[+-]/,""));
+}
+function fmtMin(sec) {
+  if (sec===null) return "?";
+  return Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0");
+}
+function toMinF(t) { var s=toSec(t); return s?+(s/60).toFixed(3):null; }
+function heatCls(d) {
+  if (d===null) return "c-zero";
+  if (d<-90) return "c-fast3"; if (d<-30) return "c-fast2";
+  if (d<5)   return "c-fast1"; if (d<30)  return "c-zero";
+  if (d<60)  return "c-slow1"; return "c-slow2";
+}
+function findSplit(splits,key) {
+  return splits.find(function(s){ return s.station.replace(/\s/g,"").toLowerCase()===key; });
+}
+function pill(txt,cls) { return '<span class="pill '+cls+'">'+txt+'</span>'; }
+function qPill(q) {
+  var m={GOOD:"pg",FAIR:"pf",POOR:"pp",BALANCED:"pg",UNBALANCED:"pb",MODERATE:"po",LOW:"pf",HIGH:"pg"};
+  return pill(q, m[q]||"po");
+}
+function rPill(s) { return pill(s>=66?"HIGH":s>=34?"MODERATE":s>=15?"LOW":"POOR", s>=66?"pg":s>=34?"po":s>=15?"pf":"pp"); }
+
+// ── Chart instances ───────────────────────────────────────────────────────────
+var charts = {};
+function destroyChart(id) { if(charts[id]){charts[id].destroy();delete charts[id];} }
+
+// ── Render ───────────────────────────────────────────────────────────────────
+function render() {
+  renderCards();
+  renderTimeChart();
+  renderHeatmap();
+  renderGapChart();
+  renderReadiness();
+}
+
+function renderCards() {
+  document.getElementById("cards").innerHTML = RACES.map(function(r,i) {
+    var b = r.benchmarks;
+    var g10 = deltaSec(b.gap_to_top_10);
+    var gCls = (g10!==null&&g10<0)?"green":"red";
+    return '<div class="card">'
+      +'<div class="card-label">'+r.label+' &middot; '+r.date+'</div>'
       +'<div class="card-time" style="color:'+COLORS[i]+'">'+r.total_time+'</div>'
       +'<div class="card-division">'+r.division+'</div>'
       +'<div class="card-metrics">'
       +'<div class="metric"><div class="metric-val blue">'+b.top_percent+'th</div><div class="metric-label">Percentile</div></div>'
       +'<div class="metric"><div class="metric-val '+gCls+'">'+b.gap_to_top_10+'</div><div class="metric-label">vs Top 10%</div></div>'
       +'<div class="metric"><div class="metric-val">'+b.top_10_pct+'</div><div class="metric-label">Top 10% time</div></div>'
-      +'</div><div class="card-partner">with '+r.partner+' &middot; '+r.field_size.toLocaleString()+' divisional finishers</div></div>';
+      +'</div>'
+      +'<div class="card-partner">with '+r.partner+' &middot; '+r.field_size.toLocaleString()+' divisional finishers</div>'
+      +'</div>';
   }).join("");
 }
-function renderTimeChart(){
+
+function renderTimeChart() {
   destroyChart("time");
-  charts["time"]=new Chart(document.getElementById("timeChart").getContext("2d"),{
-    type:"bar",data:{labels:RACES.map(function(r){return r.label;}),datasets:[
-      {label:"Your Time",data:RACES.map(function(r){return toMinF(r.total_time);}),backgroundColor:COLORS.map(function(c){return c+"cc";}),borderColor:COLORS,borderWidth:2,borderRadius:6},
-      {label:"Top 10%",type:"line",data:RACES.map(function(r){return toMinF(r.benchmarks.top_10_pct);}),borderColor:"#27ae60",backgroundColor:"transparent",borderDash:[5,4],pointRadius:5,pointBackgroundColor:"#27ae60",tension:0},
-      {label:"Median",type:"line",data:RACES.map(function(r){return toMinF(r.benchmarks.median);}),borderColor:"#e74c3c",backgroundColor:"transparent",borderDash:[3,3],pointRadius:5,pointBackgroundColor:"#e74c3c",tension:0}
-    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11},boxWidth:14}}},
-      scales:{y:{ticks:{callback:function(v){var m=Math.floor(v),s=Math.round((v-m)*60);return m+":"+String(s).padStart(2,"0");},font:{size:11}},title:{display:true,text:"Time (mm:ss)",font:{size:10},color:"#bbb"}},x:{ticks:{font:{size:11}}}}}
+  charts["time"] = new Chart(document.getElementById("timeChart").getContext("2d"), {
+    type:"bar",
+    data:{
+      labels: RACES.map(function(r){return r.label;}),
+      datasets:[
+        { label:"Your Time", data:RACES.map(function(r){return toMinF(r.total_time);}),
+          backgroundColor:COLORS.map(function(c){return c+"cc";}), borderColor:COLORS, borderWidth:2, borderRadius:6 },
+        { label:"Top 10%", type:"line", data:RACES.map(function(r){return toMinF(r.benchmarks.top_10_pct);}),
+          borderColor:"#27ae60", backgroundColor:"transparent", borderDash:[5,4], pointRadius:5, pointBackgroundColor:"#27ae60", tension:0 },
+        { label:"Median", type:"line", data:RACES.map(function(r){return toMinF(r.benchmarks.median);}),
+          borderColor:"#e74c3c", backgroundColor:"transparent", borderDash:[3,3], pointRadius:5, pointBackgroundColor:"#e74c3c", tension:0 }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ font:{size:11}, boxWidth:14 } } },
+      scales:{
+        y:{ ticks:{ callback:function(v){var m=Math.floor(v),s=Math.round((v-m)*60);return m+":"+String(s).padStart(2,"0");}, font:{size:11} },
+            title:{display:true,text:"Time (mm:ss)",font:{size:10},color:"#bbb"} },
+        x:{ ticks:{font:{size:11}} }
+      }
+    }
   });
 }
-function renderHeatmap(){
-  var html="<thead><tr><th class='sc'>Station</th>";
-  RACES.forEach(function(r,i){html+="<th style='color:"+COLORS[i]+"'>"+r.label+"<br><span style='font-weight:400;color:#aaa'>"+r.total_time+"</span></th>";});
-  html+="</tr></thead><tbody>";
+
+function renderHeatmap() {
+  var html = "<thead><tr><th class='sc'>Station</th>";
+  RACES.forEach(function(r,i){
+    html += "<th style='color:"+COLORS[i]+"'>"+r.label+"<br><span style='font-weight:400;color:#aaa'>"+r.total_time+"</span></th>";
+  });
+  html += "</tr></thead><tbody>";
   STATIONS.forEach(function(st){
-    html+="<tr><td class='sn'>"+st.label+"</td>";
-    RACES.forEach(function(r){var sp=findSplit(r.splits,st.key);if(!sp){html+="<td class='c-zero'>&mdash;</td>";return;}var d=deltaSec(sp.vs_median);html+="<td class='"+heatCls(d)+"' title='"+st.label+": "+sp.time+" ("+sp.vs_median+" vs median)'>"+sp.time+"</td>";});
-    html+="</tr>";
+    html += "<tr><td class='sn'>"+st.label+"</td>";
+    RACES.forEach(function(r){
+      var sp = findSplit(r.splits, st.key);
+      if (!sp){ html += "<td class='c-zero'>&mdash;</td>"; return; }
+      var d = deltaSec(sp.vs_median);
+      html += "<td class='"+heatCls(d)+"' title='"+st.label+": "+sp.time+" ("+sp.vs_median+" vs median)'>"+sp.time+"</td>";
+    });
+    html += "</tr>";
   });
-  document.getElementById("heatmap").innerHTML=html+"</tbody>";
+  html += "</tbody>";
+  document.getElementById("heatmap").innerHTML = html;
 }
-function renderGapChart(){
+
+function renderGapChart() {
   destroyChart("gap");
-  charts["gap"]=new Chart(document.getElementById("gapChart").getContext("2d"),{
-    type:"bar",data:{labels:STATIONS.map(function(s){return s.label;}),datasets:RACES.map(function(r,i){
-      return{label:r.label,data:STATIONS.map(function(st){var sp=findSplit(r.splits,st.key);if(!sp)return null;var s=deltaSec(sp.vs_top_10);return s!==null?+(s/60).toFixed(3):null;}),backgroundColor:COLORS[i]+"99",borderColor:COLORS[i],borderWidth:1,borderRadius:3};
-    })},options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{labels:{font:{size:11},boxWidth:14}},tooltip:{callbacks:{label:function(item){if(item.raw===null)return null;var s=Math.round(Math.abs(item.raw)*60);return item.dataset.label+": "+(item.raw<0?"-":"+")+fmtMin(s)+" vs top 10%";}}}},
-      scales:{y:{ticks:{callback:function(v){var s=Math.round(Math.abs(v)*60);return(v<0?"-":"+")+fmtMin(s);},font:{size:10}},title:{display:true,text:"Gap vs Top 10%",font:{size:10},color:"#bbb"}},x:{ticks:{font:{size:10},maxRotation:35}}}}
+  charts["gap"] = new Chart(document.getElementById("gapChart").getContext("2d"), {
+    type:"bar",
+    data:{
+      labels: STATIONS.map(function(s){return s.label;}),
+      datasets: RACES.map(function(r,i){
+        return {
+          label:r.label,
+          data: STATIONS.map(function(st){
+            var sp = findSplit(r.splits, st.key);
+            if (!sp) return null;
+            var s = deltaSec(sp.vs_top_10);
+            return s!==null ? +(s/60).toFixed(3) : null;
+          }),
+          backgroundColor:COLORS[i]+"99", borderColor:COLORS[i], borderWidth:1, borderRadius:3
+        };
+      })
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ labels:{font:{size:11},boxWidth:14} },
+        tooltip:{ callbacks:{ label:function(item){
+          if (item.raw===null) return null;
+          var s=Math.round(Math.abs(item.raw)*60);
+          return item.dataset.label+": "+(item.raw<0?"-":"+")+fmtMin(s)+" vs top 10%";
+        }}}
+      },
+      scales:{
+        y:{ ticks:{ callback:function(v){var s=Math.round(Math.abs(v)*60);return (v<0?"-":"+")+fmtMin(s);}, font:{size:10} },
+            title:{display:true,text:"Gap vs Top 10%",font:{size:10},color:"#bbb"} },
+        x:{ ticks:{font:{size:10},maxRotation:35} }
+      }
+    }
   });
 }
-function renderReadiness(){
-  document.getElementById("readinessGrid").innerHTML=GARMIN.map(function(g,i){
-    var rs=g.readiness.score;
-    return'<div class="rc rc-'+i+'"><div class="rc-title">'+g.label+'</div><div class="rc-rows">'
+
+function renderReadiness() {
+  document.getElementById("readinessGrid").innerHTML = GARMIN.map(function(g,i){
+    var rs = g.readiness.score;
+    return '<div class="rc rc-'+i+'">'
+      +'<div class="rc-title">'+g.label+'</div>'
+      +'<div class="rc-rows">'
       +'<div class="rc-row"><span class="rc-label">Training Readiness</span><span class="rc-val">'+rs+' '+rPill(rs)+'</span></div>'
       +'<div class="rc-row"><span class="rc-label">Sleep Score</span><span class="rc-val">'+g.sleep.score+' '+qPill(g.sleep.quality)+'</span></div>'
       +'<div class="rc-row"><span class="rc-label">Sleep Duration</span><span class="rc-val">'+g.sleep.duration+'</span></div>'
@@ -276,17 +393,34 @@ function renderReadiness(){
       +'<div class="rc-row"><span class="rc-label">Race Calories</span><span class="rc-val">'+g.calories+'</span></div>'
       +'</div></div>';
   }).join("");
+
   destroyChart("readiness");
-  charts["readiness"]=new Chart(document.getElementById("readinessChart").getContext("2d"),{
-    type:"bar",data:{labels:GARMIN.map(function(g){return g.label;}),datasets:[
-      {label:"Training Readiness",data:GARMIN.map(function(g){return g.readiness.score;}),backgroundColor:COLORS.map(function(c){return c+"cc";}),borderColor:COLORS,borderWidth:2,borderRadius:5},
-      {label:"Sleep Score",type:"line",data:GARMIN.map(function(g){return g.sleep.score;}),borderColor:"#3498db",backgroundColor:"transparent",borderDash:[5,4],pointRadius:5,pointBackgroundColor:"#3498db",tension:0},
-      {label:"Body Battery",type:"line",data:GARMIN.map(function(g){return g.battery.charged;}),borderColor:"#1abc9c",backgroundColor:"transparent",borderDash:[3,3],pointRadius:5,pointBackgroundColor:"#1abc9c",tension:0},
-      {label:"HRV (ms)",type:"line",data:GARMIN.map(function(g){return g.hrv.avg;}),borderColor:"#9b59b6",backgroundColor:"transparent",borderDash:[2,2],pointRadius:5,pointBackgroundColor:"#9b59b6",tension:0}
-    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11},boxWidth:14}}},
-      scales:{y:{min:0,max:100,ticks:{font:{size:10}},title:{display:true,text:"Score / Value",font:{size:10},color:"#bbb"}},x:{ticks:{font:{size:11}}}}}
+  charts["readiness"] = new Chart(document.getElementById("readinessChart").getContext("2d"), {
+    type:"bar",
+    data:{
+      labels: GARMIN.map(function(g){return g.label;}),
+      datasets:[
+        { label:"Training Readiness", data:GARMIN.map(function(g){return g.readiness.score;}),
+          backgroundColor:COLORS.map(function(c){return c+"cc";}), borderColor:COLORS, borderWidth:2, borderRadius:5 },
+        { label:"Sleep Score", type:"line", data:GARMIN.map(function(g){return g.sleep.score;}),
+          borderColor:"#3498db", backgroundColor:"transparent", borderDash:[5,4], pointRadius:5, pointBackgroundColor:"#3498db", tension:0 },
+        { label:"Body Battery", type:"line", data:GARMIN.map(function(g){return g.battery.charged;}),
+          borderColor:"#1abc9c", backgroundColor:"transparent", borderDash:[3,3], pointRadius:5, pointBackgroundColor:"#1abc9c", tension:0 },
+        { label:"HRV (ms)", type:"line", data:GARMIN.map(function(g){return g.hrv.avg;}),
+          borderColor:"#9b59b6", backgroundColor:"transparent", borderDash:[2,2], pointRadius:5, pointBackgroundColor:"#9b59b6", tension:0 }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{font:{size:11},boxWidth:14} } },
+      scales:{
+        y:{ min:0, max:100, ticks:{font:{size:10}}, title:{display:true,text:"Score / Value",font:{size:10},color:"#bbb"} },
+        x:{ ticks:{font:{size:11}} }
+      }
+    }
   });
 }
+
 render();
 </script>
 </body>
